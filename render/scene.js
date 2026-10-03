@@ -29,14 +29,22 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const fogColor = new THREE.Color(0xd3d8dc);
-scene.fog = new THREE.Fog(fogColor, 160, 4600);
+scene.fog = new THREE.Fog(fogColor, 220, 6800);
 
 // ---------- overcast sky ----------
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false,
   uniforms: { top: { value: new THREE.Color(0xb3bcc4) }, mid: { value: new THREE.Color(0xd3d9de) }, bot: { value: new THREE.Color(0xe2e5e8) } },
   vertexShader: `varying vec3 vP; void main(){ vP=(modelMatrix*vec4(position,1.)).xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader: `uniform vec3 top,mid,bot; varying vec3 vP; void main(){ float h=normalize(vP).y; vec3 c = h<0.12 ? mix(bot,mid,smoothstep(-0.05,0.12,h)) : mix(mid,top,smoothstep(0.12,0.75,h)); gl_FragColor=vec4(c,1.); }`
+  fragmentShader: `uniform vec3 top,mid,bot; varying vec3 vP;
+  float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+  float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y); }
+  float fbm(vec2 p){ float v=0., a=0.5; for(int i=0;i<5;i++){ v+=a*vnoise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return v; }
+  void main(){ vec3 d=normalize(vP); float h=d.y; vec3 c = h<0.12 ? mix(bot,mid,smoothstep(-0.05,0.12,h)) : mix(mid,top,smoothstep(0.12,0.75,h));
+    vec2 uv = d.xz/(abs(h)+0.18); float n = fbm(uv*1.6+vec2(3.1,0.4)); float n2 = fbm(uv*5.0+vec2(7.,2.));
+    float cl = smoothstep(0.35,0.75,n)*0.75 + 0.25*n2; cl *= smoothstep(-0.02,0.2,h);
+    c = mix(c, c*0.88, cl*0.5); c = mix(c, c*1.10+vec3(0.03), smoothstep(0.55,0.9,n2)*smoothstep(0.0,0.3,h)*0.5);
+    gl_FragColor=vec4(c,1.); }`
 });
 const sky = new THREE.Mesh(new THREE.SphereGeometry(6000, 48, 24), skyMat);
 scene.add(sky);
@@ -290,7 +298,8 @@ function annulus(ri, ro, h, segs = 72, a0 = 0, a1 = Math.PI * 2) {
       }
     }
   });
-  const crown = new THREE.Mesh(new THREE.CylinderGeometry(ringRadius(141) - 2.5, ringRadius(136) - 2.4, 6, 64, 1, true), glassMat); crown.position.y = 139; tower.add(crown);
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(ringRadius(141) - 2.5, ringRadius(137) - 2.4, 4.5, 64, 1, true), roomGlass); crown.position.y = 139.5; tower.add(crown);
+  const crownRoof = new THREE.Mesh(annulus(VOID_R, ringRadius(141.5) - 2.5, 0.5, 64), timberDark); crownRoof.position.y = 141.4; tower.add(crownRoof);
 }
 
 // ---------- base podium: warm glass lobby between the roots ----------
@@ -350,13 +359,15 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
 {
   const winTexA = windowTexture('#7b8d99', 0.06), winTexB = windowTexture('#8a9aa4', 0.04), winTexC = windowTexture('#6c7f8c', 0.08);
   const texes = [winTexA, winTexB, winTexC];
-  const podiumMat = new THREE.MeshStandardMaterial({ color: 0x7d7a74, roughness: 0.8 });
+  const podTex = windowTexture('#5f6a70', 0.2); podTex.repeat.set(4, 1);
+  const podiumMat = new THREE.MeshStandardMaterial({ map: podTex, color: 0xb8b4ac, roughness: 0.6, metalness: 0.2 });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x7d7a74, roughness: 0.8 });
   function glassTower(x, z, w, d, h, ti) {
     const tex = texes[ti % 3].clone(); tex.needsUpdate = true; tex.repeat.set(Math.max(1, Math.round(w / 9)), Math.max(1, Math.round(h / 36)));
     const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xd5dde2, roughness: 0.28, metalness: 0.35, envMapIntensity: 0.9 });
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, h / 2, z); m.castShadow = m.receiveShadow = true; scene.add(m);
     const pod = new THREE.Mesh(new THREE.BoxGeometry(w + 6, 12, d + 6), podiumMat); pod.position.set(x, 6, z); pod.castShadow = true; scene.add(pod);
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 0.6, 3, d * 0.6), podiumMat); cap.position.set(x, h + 1.5, z); scene.add(cap);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 0.6, 3, d * 0.6), capMat); cap.position.set(x, h + 1.5, z); scene.add(cap);
   }
   // towers lining the street on both sides, leaving the plaza open
   const rows = [
@@ -377,11 +388,11 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
 {
   const geo = new THREE.PlaneGeometry(12000, 3200, 240, 64); geo.rotateX(-Math.PI / 2);
   const p = geo.attributes.position; const col = [];
-  const snow = new THREE.Color(0xeef1f3), rock = new THREE.Color(0x5e676f), forest = new THREE.Color(0x36423f), lowc = new THREE.Color(0x46525a);
+  const snow = new THREE.Color(0xe6eaed), rock = new THREE.Color(0x5e676f), forest = new THREE.Color(0x36423f), lowc = new THREE.Color(0x46525a);
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), z = p.getZ(i) - 3800;
     const d = Math.max(0, Math.min(1, (-z - 2300) / 900)); // ramp up with distance so no wall at the near edge
-    let h = 520 + 380 * Math.sin(x / 1150 + 0.6) + 260 * Math.sin(x / 470 + 2.1) + 160 * Math.sin(x / 210 + 1.0) + 90 * Math.sin(x / 95 + z / 330) + 60 * Math.sin(x / 41 + z / 150);
+    let h = 520 + 380 * Math.sin(x / 1150 + 0.6) + 260 * Math.sin(x / 470 + 2.1) + 160 * Math.abs(Math.sin(x / 210 + 1.0)) + 110 * Math.abs(Math.sin(x / 95 + z / 330)) + 70 * Math.sin(x / 41 + z / 150) + 45 * Math.abs(Math.sin(x / 17 + z / 90));
     h += 220 * Math.exp(-Math.pow((x - 900) / 1200, 2)) + 180 * Math.exp(-Math.pow((x + 1600) / 900, 2));
     h *= 1.15 * d * (1 - Math.max(0, (-z - 5200) / 1800));
     h = Math.max(0, h);
@@ -394,6 +405,13 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
   const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false })); scene.add(m);
 }
 
+const views = {
+  street: { z: 142, x: -3.0, tanTop: 1.10, tanBot: 0.135 },
+  wide:   { z: 232, x: -4.0, tanTop: 0.700, tanBot: 0.140 },
+  close:  { z: 118, x:  2.0, tanTop: 1.300, tanBot: 0.130 },
+};
+const v = views[VIEW] || views.street;
+
 // ---------- street furniture: trees, lamps, cars ----------
 {
   const barkMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.95 });
@@ -401,7 +419,7 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
     const t = new THREE.Mesh(new THREE.CylinderGeometry(0.18 * s, 0.28 * s, 4.5 * s, 8), barkMat); t.position.set(x, 2.25 * s, z); t.castShadow = true; scene.add(t);
     for (let i = 0; i < 7; i++) { const c = new THREE.Mesh(new THREE.IcosahedronGeometry(rr(1.1, 2.3) * s, 1), leafMats[(i + 1) % leafMats.length]); c.position.set(x + rr(-1.2, 1.2) * s, (5.2 + rr(-0.6, 1.6)) * s, z + rr(-1.2, 1.2) * s); c.castShadow = true; scene.add(c); }
   }
-  for (let z = 66; z < 380; z += 17) { if (z > 112 && z < 182) continue; tree(-15.5, z + rr(-2, 2), rr(0.9, 1.3)); tree(15.5, z + rr(-2, 2), rr(0.9, 1.3)); }
+  for (let z = 66; z < 380; z += 17) { if (z > v.z - 30 && z < v.z + 40) continue; tree(-15.5, z + rr(-2, 2), rr(0.9, 1.3)); tree(15.5, z + rr(-2, 2), rr(0.9, 1.3)); }
   for (let i = 0; i < 20; i++) { const a = i / 20 * Math.PI * 2 + 0.15; if (Math.abs(Math.sin(a) - 1) < 0.25) continue; tree(Math.cos(a) * 50, Math.sin(a) * 50, rr(1.0, 1.4)); }
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a3c3e, roughness: 0.6, metalness: 0.6 });
   const lampMat = new THREE.MeshStandardMaterial({ color: 0xffe9c0, emissive: 0xffd089, emissiveIntensity: 3 });
@@ -421,7 +439,7 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
     for (const [sx, sz] of [[-0.9, 1.5], [0.9, 1.5], [-0.9, -1.5], [0.9, -1.5]]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.25, 12), new THREE.MeshStandardMaterial({ color: 0x111111 })); w.rotation.z = Math.PI / 2; w.position.set(sx, 0.34, sz); g.add(w); }
     scene.add(g);
   }
-  car(5.5, 84, true, 0x2a2f36); car(-5.5, 100, false, 0x7d8286); car(5.5, 212, true, 0x5a1e1e); car(-6, 300, false, 0x25303a);
+  car(5.5, 84, true, 0x2a2f36); car(-5.5, 100, false, 0x7d8286); car(5.5, v.z + 70, true, 0x5a1e1e); car(-6, v.z + 160, false, 0x25303a);
 }
 
 // ---------- pedestrians ----------
@@ -440,7 +458,7 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
     scene.add(g);
   }
   // foreground figures on the wet street, walking toward the hotel
-  person(-4.2, 126, Math.PI + 0.2, true, 0); person(-3.0, 127.5, Math.PI - 0.1, false, 4); person(6.4, 120, Math.PI + 0.4, true, 1); person(9.4, 113, Math.PI - 0.5, true, 6); person(-9.8, 108, Math.PI, false, 3);
+  person(-4.2, v.z - 16, Math.PI + 0.2, true, 0); person(-3.0, v.z - 14.5, Math.PI - 0.1, false, 4); person(6.4, v.z - 22, Math.PI + 0.4, true, 1); person(9.4, v.z - 29, Math.PI - 0.5, true, 6); person(-9.8, v.z - 34, Math.PI, false, 3);
   // sidewalks
   for (let i = 0; i < 26; i++) { const sx = rnd() < 0.5 ? -1 : 1; person(sx * rr(13.5, 18.5), rr(62, 330), rr(0, 6.3), rnd() < 0.5); }
   // crosswalk & plaza & entrance walkway
@@ -450,12 +468,6 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
 }
 
 // ---------- camera: eye level, shifted lens (verticals stay vertical) ----------
-const views = {
-  street: { z: 142, x: -3.0, tanTop: 1.10, tanBot: 0.135 },
-  wide:   { z: 232, x: -4.0, tanTop: 0.700, tanBot: 0.140 },
-  close:  { z: 118, x:  2.0, tanTop: 1.300, tanBot: 0.130 },
-};
-const v = views[VIEW] || views.street;
 const fovFull = 2 * Math.atan(v.tanTop) / DEG;
 const frac = (v.tanTop + v.tanBot) / (2 * v.tanTop);
 const Hf = Math.round(H / frac);
