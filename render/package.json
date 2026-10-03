@@ -1,0 +1,12 @@
+{
+  "name": "hollow-tree-hotel-render",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Procedural Three.js model and headless renderer for the Hollow Tree Hotel, Vancouver",
+  "scripts": {
+    "render": "node render.js"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  }
+}
