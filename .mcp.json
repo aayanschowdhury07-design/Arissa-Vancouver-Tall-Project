@@ -2,14 +2,17 @@
   "mcpServers": {
     "media-pipeline": {
       "command": "node",
-      "args": ["tools/image-gen/bundle.js"],
+      "args": [
+        "tools/image-gen/bundle.js"
+      ],
       "env": {
-        "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+        "GEMINI_API_KEY": "${GEMINI_API_KEY:-managed-by-network-secret}",
         "GEMINI_DEFAULT_MODEL": "${GEMINI_DEFAULT_MODEL:-gemini-3-pro-image}",
         "OPENAI_API_KEY": "${OPENAI_API_KEY}",
         "OPENAI_DEFAULT_MODEL": "${OPENAI_DEFAULT_MODEL:-gpt-image-2}",
         "IMAGE_PROVIDER": "${IMAGE_PROVIDER:-gemini}",
-        "IMAGE_OUTPUT_DIR": "${IMAGE_OUTPUT_DIR:-./renders/ai}"
+        "IMAGE_OUTPUT_DIR": "${IMAGE_OUTPUT_DIR:-./renders/ai}",
+        "NODE_USE_ENV_PROXY": "1"
       }
     }
   }

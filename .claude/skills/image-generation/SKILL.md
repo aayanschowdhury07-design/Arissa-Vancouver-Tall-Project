@@ -13,7 +13,15 @@ adapted to live inside this repository instead of a plugin root.
 
 - **API key** — the CLI needs `GEMINI_API_KEY` and/or `OPENAI_API_KEY` in the environment.
   If neither is set it exits with `{"success":false,"errorCode":"CONFIG_ERROR",...}`; stop and
-  tell the user to add the key as an environment secret (never ask them to paste it in chat).
+  tell the user to add the key in the environment settings (never ask them to paste it in chat).
+- **Cloud environment: network secret + proxy.** This repo's cloud environment stores the Gemini
+  key as a Network secret for `generativelanguage.googleapis.com`; the agent proxy adds the
+  `x-goog-api-key` header outside the VM, so the key is never visible here. Two things follow:
+  run the CLI with `NODE_USE_ENV_PROXY=1` (Node's fetch ignores `HTTPS_PROXY` otherwise and the
+  request leaves without the key, failing with `API_KEY_INVALID`), and export the placeholder
+  `GEMINI_API_KEY=managed-by-network-secret` so the CLI's presence check passes. The helper script
+  below does both automatically; for direct CLI calls prefix the command with
+  `NODE_USE_ENV_PROXY=1 GEMINI_API_KEY=${GEMINI_API_KEY:-managed-by-network-secret}`.
 - **Provider** — in the cloud environment used for this repo the Gemini API host is reachable
   and `api.openai.com` is blocked by the network policy, so leave `--model` unset (Gemini) unless
   the user has allowed the OpenAI host. The default Gemini model is `gemini-3-pro-image`.
@@ -29,6 +37,7 @@ adapted to live inside this repository instead of a plugin root.
 ## Using the CLI
 
 ```bash
+NODE_USE_ENV_PROXY=1 GEMINI_API_KEY="${GEMINI_API_KEY:-managed-by-network-secret}" \
 node tools/image-gen/cli.bundle.js \
   --prompt "Your detailed image description" \
   --output-dir renders/ai \

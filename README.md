@@ -31,9 +31,14 @@ this repo can generate photoreal AI views with Google Gemini (or OpenAI) image m
 ### Setup
 
 1. Get a Gemini API key at https://aistudio.google.com/apikey (or an OpenAI key).
-2. In the cloud environment settings (environment menu in the session title bar, then Edit), add it
-   as a secret or environment variable named `GEMINI_API_KEY` (or `OPENAI_API_KEY`). New sessions
-   pick it up. Locally, export the variable in your shell instead.
+2. In the cloud environment settings (environment menu in the session title bar, then Edit), store
+   it one of two ways:
+   - **Network secret** (the key never enters the session): allowed website
+     `generativelanguage.googleapis.com`, custom header name `x-goog-api-key`, prefix empty, value =
+     the key. The agent proxy attaches it to requests; the tooling here exports a placeholder
+     `GEMINI_API_KEY` and sets `NODE_USE_ENV_PROXY=1` so Node's fetch goes through that proxy.
+   - **Environment variable** `GEMINI_API_KEY` (or `OPENAI_API_KEY`), readable by sessions.
+   Locally, export the variable in your shell.
 3. OpenAI only: the environment's network policy must allow `api.openai.com` (Gemini's host
    `generativelanguage.googleapis.com` is already reachable).
 
