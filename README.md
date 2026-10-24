@@ -16,6 +16,41 @@ reflecting pools around a warmly lit glass lobby.
 Both views use a shifted lens (camera held level, frustum offset upward) so the tower's
 verticals stay vertical, as in an architectural photograph.
 
+## AI image generation (media-pipeline skill)
+
+The repository carries a project install of the
+[claude-image-gen](https://github.com/guinacio/claude-image-gen) plugin so Claude Code sessions in
+this repo can generate photoreal AI views with Google Gemini (or OpenAI) image models:
+
+- `.claude/skills/image-generation/` — the skill, with paths adapted to this repo
+- `tools/image-gen/cli.bundle.js` — the standalone CLI the skill runs (`bundle.js` is the MCP server,
+  registered in `.mcp.json` as `media-pipeline`; see `tools/image-gen/NOTICE.md` for provenance)
+- `reference/design-boards/` — the five design boards, usable as reference images
+- `renders/ai/` — where generated images are saved
+
+### Setup
+
+1. Get a Gemini API key at https://aistudio.google.com/apikey (or an OpenAI key).
+2. In the cloud environment settings (environment menu in the session title bar, then Edit), add it
+   as a secret or environment variable named `GEMINI_API_KEY` (or `OPENAI_API_KEY`). New sessions
+   pick it up. Locally, export the variable in your shell instead.
+3. OpenAI only: the environment's network policy must allow `api.openai.com` (Gemini's host
+   `generativelanguage.googleapis.com` is already reachable).
+
+### Use
+
+```bash
+# the agreed street-level brief with all five design boards as references (portrait)
+tools/image-gen/render-tower.sh hollow-tree-hotel-ai-street-view 3:4
+
+# any other image
+node tools/image-gen/cli.bundle.js --prompt "..." --aspect-ratio 16:9 \
+  --reference-images reference/design-boards/05-elevations-and-section.webp \
+  --output-dir renders/ai --output renders/ai/my-image.png
+```
+
+Or just ask Claude for an AI render in this repo; the skill triggers on that request.
+
 ## How it is built
 
 `render/scene.js` is a Three.js scene generated entirely from parameters taken off the
