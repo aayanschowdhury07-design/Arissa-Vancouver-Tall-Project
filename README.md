@@ -10,11 +10,18 @@ reflecting pools around a warmly lit glass lobby.
 
 | File | View |
 | --- | --- |
-| `renders/hollow-tree-hotel-street-view.png` | Eye-level portrait view from the wet street (2600 × 3250) |
-| `renders/hollow-tree-hotel-street-view-wide.png` | Eye-level landscape view (3200 × 1800) |
+| `renders/hollow-tree-hotel-street-view.png` | Eye-level portrait from the wet street, overcast (2600 × 3250) |
+| `renders/hollow-tree-hotel-street-view-wide.png` | Eye-level landscape from further down the street (3200 × 1800) |
+| `renders/hollow-tree-hotel-night.png` | Night view: lit interiors, uplit roots, street lamps, bloom (2600 × 3250) |
+| `renders/hollow-tree-hotel-base.png` | Base at street scale: arched roots, reflecting pools, glass lobby (3200 × 1800) |
+| `renders/hollow-tree-hotel-atrium.png` | Looking up the hollow void from the lobby clearing (2400 × 3000) |
+| `renders/hollow-tree-hotel-aerial.png` | Aerial over downtown toward the North Shore mountains (3200 × 1800) |
+| `renders/hollow-tree-hotel-elevation.png` | Rendered front elevation, orthographic, after the elevation board (2400 × 3000) |
+| `renders/hollow-tree-hotel-plan.png` | Rendered roof plan, orthographic top view, north up (3000 × 3000) |
 
-Both views use a shifted lens (camera held level, frustum offset upward) so the tower's
-verticals stay vertical, as in an architectural photograph.
+Perspective street views use a shifted lens (camera held level, frustum offset upward) so the
+tower's verticals stay vertical, as in an architectural photograph. All views get ground-truth
+ambient occlusion; the night view adds bloom.
 
 ## AI image generation (media-pipeline skill)
 
@@ -83,8 +90,10 @@ cd render
 npm install
 node render.js --view street --w 2600 --h 3250 --out ../renders/hollow-tree-hotel-street-view.png
 node render.js --view wide   --w 3200 --h 1800 --out ../renders/hollow-tree-hotel-street-view-wide.png
+node render.js --view night  --w 2600 --h 3250 --out ../renders/hollow-tree-hotel-night.png
 ```
 
 `render.js` serves the folder locally and opens it in headless Chromium through Playwright
-(WebGL via SwiftShader, so no GPU is needed). Views: `street`, `wide`, `close`. Open
+(WebGL via SwiftShader, so no GPU is needed). Views: `street`, `wide`, `close`, `night`, `base`, `atrium`, `aerial`, `elevation`, `plan`.
+Pass `--time night` to light any view at night, or `--ao 0` to skip ambient occlusion. Open
 `render/index.html` from any static server to view the scene in a browser.

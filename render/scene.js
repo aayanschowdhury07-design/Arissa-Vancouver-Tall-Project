@@ -3,12 +3,22 @@
 // terraces, splintered tips, flared arched roots landing in reflecting pools, warm glass lobby.
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const q = new URLSearchParams(location.search);
 const W = +q.get('w') || 2600;
 const H = +q.get('h') || 3250;
 const VIEW = q.get('view') || 'street';
 const SEED = +q.get('seed') || 7;
+const NIGHT = q.get('time') === 'night' || VIEW === 'night';
+const AO = q.get('ao') !== '0';
+const ELEV = VIEW === 'elevation';
+const PLAN = VIEW === 'plan';
+const DENSE_CITY = VIEW === 'aerial' || PLAN;
 
 // ---------- deterministic random ----------
 let _s = SEED;
@@ -28,13 +38,15 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const fogColor = new THREE.Color(0xd3d8dc);
-scene.fog = new THREE.Fog(fogColor, 220, 6800);
+const fogColor = new THREE.Color(NIGHT ? 0x1c2533 : 0xd3d8dc);
+scene.fog = new THREE.Fog(fogColor, NIGHT ? 160 : (ELEV ? 940 : 220), NIGHT ? 5200 : (ELEV ? 2100 : 6800));
+if (VIEW === 'atrium') renderer.toneMappingExposure = 0.8;
+if (NIGHT) renderer.toneMappingExposure = 1.0;
 
 // ---------- overcast sky ----------
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false,
-  uniforms: { top: { value: new THREE.Color(0xb3bcc4) }, mid: { value: new THREE.Color(0xd3d9de) }, bot: { value: new THREE.Color(0xe2e5e8) } },
+  uniforms: NIGHT ? { top: { value: new THREE.Color(0x070b14) }, mid: { value: new THREE.Color(0x172234) }, bot: { value: new THREE.Color(0x3a3f4c) } } : { top: { value: new THREE.Color(0xb3bcc4) }, mid: { value: new THREE.Color(0xd3d9de) }, bot: { value: new THREE.Color(0xe2e5e8) } },
   vertexShader: `varying vec3 vP; void main(){ vP=(modelMatrix*vec4(position,1.)).xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
   fragmentShader: `uniform vec3 top,mid,bot; varying vec3 vP;
   float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
@@ -46,7 +58,7 @@ const skyMat = new THREE.ShaderMaterial({
     c = mix(c, c*0.88, cl*0.5); c = mix(c, c*1.10+vec3(0.03), smoothstep(0.55,0.9,n2)*smoothstep(0.0,0.3,h)*0.5);
     gl_FragColor=vec4(c,1.); }`
 });
-const sky = new THREE.Mesh(new THREE.SphereGeometry(6000, 48, 24), skyMat);
+const sky = new THREE.Mesh(new THREE.SphereGeometry(6000, 48, 24), skyMat); sky.userData.noAO = true;
 scene.add(sky);
 { // environment for glass/metal reflections
   const envScene = new THREE.Scene();
@@ -56,13 +68,13 @@ scene.add(sky);
 }
 
 // ---------- lights (soft overcast) ----------
-scene.add(new THREE.HemisphereLight(0xe4e9ee, 0x5a5751, 1.9));
-const sun = new THREE.DirectionalLight(0xfff4e6, 1.25);
+scene.add(NIGHT ? new THREE.HemisphereLight(0x3a4a66, 0x1a1712, 0.35) : new THREE.HemisphereLight(0xe4e9ee, 0x5a5751, 1.9));
+const sun = new THREE.DirectionalLight(NIGHT ? 0x9fb4d6 : 0xfff4e6, NIGHT ? 0.18 : 1.25);
 sun.position.set(-260, 420, 300);
 sun.target.position.set(0, 60, 0);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
-Object.assign(sun.shadow.camera, { left: -150, right: 150, top: 150, bottom: -150, near: 50, far: 1200 });
+Object.assign(sun.shadow.camera, DENSE_CITY ? { left: -320, right: 320, top: 320, bottom: -320, near: 50, far: 1600 } : { left: -150, right: 150, top: 150, bottom: -150, near: 50, far: 1200 });
 sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.6;
 scene.add(sun, sun.target);
@@ -134,9 +146,9 @@ const stoneMat = new THREE.MeshStandardMaterial({ color: 0xa9a7a0, map: stoneTex
 const concreteMat = new THREE.MeshStandardMaterial({ color: 0x9b9a95, map: stoneTex, roughness: 0.85 });
 const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xbfd3d8, roughness: 0.08, metalness: 0.05, transparent: true, opacity: 0.42, envMapIntensity: 1.3, side: THREE.DoubleSide, depthWrite: false });
 const lobbyGlass = new THREE.MeshPhysicalMaterial({ color: 0xd7e2e4, roughness: 0.05, metalness: 0.05, transparent: true, opacity: 0.3, envMapIntensity: 1.1, side: THREE.DoubleSide, depthWrite: false });
-const slabMat = new THREE.MeshStandardMaterial({ color: 0xcfc3ae, emissive: 0xffc98a, emissiveIntensity: 0.12, roughness: 0.9 });
-const roomGlass = new THREE.MeshPhysicalMaterial({ color: 0x6d8690, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.62, envMapIntensity: 1.2, emissive: 0xffb070, emissiveIntensity: 0.10, side: THREE.DoubleSide, depthWrite: false });
-const warmPanel = new THREE.MeshStandardMaterial({ color: 0xffe2b8, emissive: 0xffb866, emissiveIntensity: 0.55, roughness: 1 });
+const slabMat = new THREE.MeshStandardMaterial({ color: 0xcfc3ae, emissive: 0xffc98a, emissiveIntensity: NIGHT ? 0.35 : 0.12, roughness: 0.9 });
+const roomGlass = new THREE.MeshPhysicalMaterial({ color: 0x6d8690, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.62, envMapIntensity: 1.2, emissive: 0xffb070, emissiveIntensity: NIGHT ? 0.32 : 0.10, side: THREE.DoubleSide, depthWrite: false });
+const warmPanel = new THREE.MeshStandardMaterial({ color: 0xffe2b8, emissive: 0xffb866, emissiveIntensity: NIGHT ? 1.1 : 0.55, roughness: 1 });
 const leafMats = [0x2a4228, 0x365431, 0x233a26, 0x415c33, 0x334c2e].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95, flatShading: true }));
 
 // ---------- tower parameters (from the elevation: 145 m tall, ~45 m wide at base) ----------
@@ -271,7 +283,7 @@ function annulus(ri, ro, h, segs = 72, a0 = 0, a1 = Math.PI * 2) {
     const R = ringRadius(y) - 1.0;
     const ring = new THREE.Mesh(new THREE.TorusGeometry(R, 0.9, 10, 140), timberMat);
     ring.rotation.x = Math.PI / 2; ring.position.y = y + 0.6; ring.castShadow = ring.receiveShadow = true; tower.add(ring);
-    for (let b = 0; b < 3; b++) {
+    for (let b = 0; b < (li === 0 ? 0 : 3); b++) {
       const rot = (li * 20 + b * 60) * DEG;
       const beam = addMesh(new THREE.BoxGeometry(2 * R + 1, 1.4, 2.8), timberMat);
       beam.position.y = y + 0.6; beam.rotation.y = rot;
@@ -305,14 +317,16 @@ function annulus(ri, ro, h, segs = 72, a0 = 0, a1 = Math.PI * 2) {
 // ---------- base podium: warm glass lobby between the roots ----------
 {
   const LR = 17.2;
-  for (const [y, h] of [[0.0, 0.5], [7.0, 0.5], [14.2, 0.9]]) {
-    const slab = addMesh(new THREE.CylinderGeometry(LR + (y > 14 ? 1.2 : 0.3), LR + (y > 14 ? 1.2 : 0.3), h, 96), y > 14 ? timberDark : stoneMat); slab.position.y = y + h / 2;
-  }
+  addMesh(new THREE.CylinderGeometry(LR + 0.3, LR + 0.3, 0.5, 96), stoneMat).position.y = 0.25;
+  addMesh(annulus(8.5, LR + 0.3, 0.5, 96), stoneMat).position.y = 7.0;          // mezzanine ring around a double-height clearing
+  addMesh(annulus(VOID_R + 0.4, LR + 1.2, 0.9, 96), timberDark).position.y = 14.2; // podium roof, open to the hollow void above
+  const mezRail = new THREE.Mesh(new THREE.TorusGeometry(8.5, 0.09, 6, 96), timberDark); mezRail.rotation.x = Math.PI / 2; mezRail.position.y = 8.6; scene.add(mezRail);
   const drum = new THREE.Mesh(new THREE.CylinderGeometry(LR, LR, 14.2, 96, 1, true), lobbyGlass); drum.position.y = 7.1; scene.add(drum);
-  for (const y of [6.4, 13.6]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(LR - 0.4, LR - 0.4, 0.15, 96), new THREE.MeshStandardMaterial({ color: 0xffe2b8, emissive: 0xffb866, emissiveIntensity: 1.1 })); p.position.y = y; scene.add(p); }
+  const lobbyPanel = new THREE.MeshStandardMaterial({ color: 0xffe2b8, emissive: 0xffb866, emissiveIntensity: NIGHT ? 1.6 : (VIEW === 'atrium' ? 0.35 : 1.1) });
+  for (const [y, hole] of [[6.4, 8.6], [13.6, VOID_R + 0.5]]) { const p = new THREE.Mesh(annulus(hole, LR - 0.4, 0.15, 96), VIEW === 'atrium' && y > 10 ? timberDark : lobbyPanel); p.position.y = y; scene.add(p); }
   // holdfast columns in the lobby (bundled stipes)
   for (let i = 0; i < 7; i++) {
-    const a = i / 7 * Math.PI * 2 + 0.3, r = i === 0 ? 0 : 10.5; const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+    const a = i / 7 * Math.PI * 2 + 0.3, r = 11.6; const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
     for (let s = 0; s < 6; s++) {
       const sa = s / 6 * Math.PI * 2;
       const c = new THREE.CatmullRomCurve3([new THREE.Vector3(cx + Math.cos(sa) * 2.2, 0.3, cz + Math.sin(sa) * 2.2), new THREE.Vector3(cx + Math.cos(sa) * 0.9, 4.5, cz + Math.sin(sa) * 0.9), new THREE.Vector3(cx + Math.cos(sa) * 0.5, 14.2, cz + Math.sin(sa) * 0.5)]);
@@ -320,8 +334,20 @@ function annulus(ri, ro, h, segs = 72, a0 = 0, a1 = Math.PI * 2) {
     }
   }
   // warm lights inside the lobby
-  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const L = new THREE.PointLight(0xffb870, 900, 60, 2); L.position.set(Math.cos(a) * 9, 5, Math.sin(a) * 9); scene.add(L); }
-  const L0 = new THREE.PointLight(0xffc080, 1500, 70, 2); L0.position.set(0, 9, 8); scene.add(L0);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const L = new THREE.PointLight(0xffb870, VIEW === 'atrium' ? 260 : 900, 60, 2); L.position.set(Math.cos(a) * 9, 5, Math.sin(a) * 9); scene.add(L); }
+  const L0 = new THREE.PointLight(0xffc080, VIEW === 'atrium' ? 400 : 1500, 70, 2); L0.position.set(0, 9, 8); scene.add(L0);
+  // lounge clusters in the seafloor clearing (from the Layer 1 plan)
+  const sofa = new THREE.MeshStandardMaterial({ color: 0x6f7a6a, roughness: 0.9 }), rug = new THREE.MeshStandardMaterial({ color: 0xb8a68a, roughness: 1 });
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.5, r = 5.2; const g = new THREE.Group(); g.position.set(Math.cos(a) * r, 0.5, Math.sin(a) * r); g.rotation.y = -a;
+    const rg = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.02, 24), rug); g.add(rg);
+    const sf = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.32, 8, 20, Math.PI * 1.1), sofa); sf.rotation.x = Math.PI / 2; sf.position.y = 0.32; g.add(sf);
+    const pl = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), leafMats[i % leafMats.length]); pl.position.set(0, 0.7, 0); g.add(pl); scene.add(g); }
+  const desk = addMesh(new THREE.TorusGeometry(2.2, 0.45, 8, 24, Math.PI * 0.8), timberMat, scene); desk.rotation.x = Math.PI / 2; desk.rotation.z = Math.PI * 0.1; desk.position.set(0, 1.0, 12.4);
+}
+
+if (NIGHT) for (let k = 0; k < NT; k++) {
+  const az = trunkAz[k], sp = new THREE.SpotLight(0xffc27a, 2600, 90, 0.42, 0.6, 1.6);
+  sp.position.copy(cyl(az, 34, 0.6)); sp.target.position.copy(cyl(az, 14, 34)); scene.add(sp, sp.target);
 }
 
 // ---------- ground: mirror base (wet street + pools), overlays, plaza, walkways ----------
@@ -330,6 +356,7 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
 {
   const puddles = puddleAlpha(); puddles.repeat.set(10, 10);
   const asphalt = new THREE.MeshStandardMaterial({ color: 0x33363a, roughness: 0.55, transparent: true, alphaMap: puddles, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 });
+  if (DENSE_CITY) { mirror.visible = false; asphalt.alphaMap = null; asphalt.transparent = false; asphalt.depthWrite = true; asphalt.color.set(0x55585b); }
   const asphaltPlane = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), asphalt); asphaltPlane.rotation.x = -Math.PI / 2; asphaltPlane.position.y = 0.04; asphaltPlane.receiveShadow = true; scene.add(asphaltPlane);
   // the pools: cut the asphalt away by covering the plaza instead with raised stone; pool water tint
   const waterTint = new THREE.Mesh(annulus(17.6, 40, 0.01, 128), new THREE.MeshStandardMaterial({ color: 0x8fb0b8, transparent: true, opacity: 0.18, roughness: 0.05, depthWrite: false }));
@@ -357,7 +384,7 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
 
 // ---------- surrounding downtown: glass towers ----------
 {
-  const winTexA = windowTexture('#7b8d99', 0.06), winTexB = windowTexture('#8a9aa4', 0.04), winTexC = windowTexture('#6c7f8c', 0.08);
+  const winTexA = NIGHT ? windowTexture('#141a24', 0.42) : windowTexture('#7b8d99', 0.06), winTexB = NIGHT ? windowTexture('#10161f', 0.3) : windowTexture('#8a9aa4', 0.04), winTexC = NIGHT ? windowTexture('#171e2a', 0.5) : windowTexture('#6c7f8c', 0.08);
   const texes = [winTexA, winTexB, winTexC];
   const podTex = windowTexture('#5f6a70', 0.2); podTex.repeat.set(4, 1);
   const podiumMat = new THREE.MeshStandardMaterial({ map: podTex, color: 0xb8b4ac, roughness: 0.6, metalness: 0.2 });
@@ -365,6 +392,7 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
   function glassTower(x, z, w, d, h, ti) {
     const tex = texes[ti % 3].clone(); tex.needsUpdate = true; tex.repeat.set(Math.max(1, Math.round(w / 9)), Math.max(1, Math.round(h / 36)));
     const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xd5dde2, roughness: 0.28, metalness: 0.35, envMapIntensity: 0.9 });
+    if (NIGHT) { mat.emissiveMap = tex; mat.emissive = new THREE.Color(0xffffff); mat.emissiveIntensity = 0.85; mat.color.set(0x3c434c); }
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, h / 2, z); m.castShadow = m.receiveShadow = true; scene.add(m);
     const pod = new THREE.Mesh(new THREE.BoxGeometry(w + 6, 12, d + 6), podiumMat); pod.position.set(x, 6, z); pod.castShadow = true; scene.add(pod);
     const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 0.6, 3, d * 0.6), capMat); cap.position.set(x, h + 1.5, z); scene.add(cap);
@@ -376,12 +404,22 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
     { x: 150, zs: [90, 200, 330, 480], hs: [100, 135, 90, 120] },
   ];
   let ti = 0;
-  for (const side of [-1, 1]) for (const row of rows) row.zs.forEach((z, i) => {
+  if (!ELEV) for (const side of [-1, 1]) for (const row of rows) row.zs.forEach((z, i) => {
     glassTower(side * (row.x + rr(-6, 6)), z + rr(-8, 8), rr(26, 38), rr(26, 38), row.hs[i] * rr(0.9, 1.1), ti++);
   });
   // city blocks behind the hotel (north), lower so the mountains read above them
   const back = [[-70, -140, 72], [70, -150, 88], [-130, -200, 110], [130, -210, 96], [0, -260, 80], [-200, -300, 120], [200, -320, 105], [-60, -380, 130], [80, -420, 118], [-300, -260, 90], [300, -280, 98], [-160, -500, 140], [160, -520, 126], [0, -600, 110], [-400, -450, 112], [400, -480, 120], [-250, -700, 150], [250, -720, 138]];
   for (const [x, z, h] of back) glassTower(x + rr(-10, 10), z, rr(28, 40), rr(28, 40), h, ti++);
+  if (DENSE_CITY) { // infill blocks for the aerial and plan views, keeping the street, plaza and existing rows clear
+    for (let gx = -560; gx <= 560; gx += 64) for (let gz = -600; gz <= 640; gz += 64) {
+      const x = gx + rr(-8, 8), z = gz + rr(-8, 8);
+      if (Math.hypot(x, z) < 92) continue; if (Math.abs(x) < 34 && z > 0) continue;
+      if (Math.abs(x) > 28 && Math.abs(x) < 175 && z > 40 && z < 660) continue;
+      const roll = rnd(); if (roll < 0.3) continue;
+      if (roll < 0.62) { const h = rr(9, 26); const b = new THREE.Mesh(new THREE.BoxGeometry(rr(30, 50), h, rr(30, 50)), new THREE.MeshStandardMaterial({ color: [0x8c857a, 0x9a948a, 0x75736e, 0xa39787][ti % 4], roughness: 0.85 })); b.position.set(x, h / 2, z); b.castShadow = b.receiveShadow = true; scene.add(b); ti++; }
+      else glassTower(x, z, rr(20, 32), rr(20, 32), roll > 0.9 ? rr(110, 170) : rr(40, 100), ti++);
+    }
+  }
 }
 
 // ---------- North Shore mountains with snow ----------
@@ -402,18 +440,24 @@ mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0; scene.add(mirror);
     col.push(c.r, c.g, c.b);
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false })); scene.add(m);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false, color: NIGHT ? 0x5a6578 : 0xffffff })); m.visible = !ELEV && !PLAN; scene.add(m);
 }
 
 const views = {
-  street: { z: 142, x: -3.0, tanTop: 1.10, tanBot: 0.135 },
-  wide:   { z: 232, x: -4.0, tanTop: 0.700, tanBot: 0.140 },
-  close:  { z: 118, x:  2.0, tanTop: 1.300, tanBot: 0.130 },
+  street:    { type: 'shift', z: 142, x: -3.0, tanTop: 1.10, tanBot: 0.135 },
+  wide:      { type: 'shift', z: 232, x: -4.0, tanTop: 0.700, tanBot: 0.140 },
+  close:     { type: 'shift', z: 118, x:  2.0, tanTop: 1.300, tanBot: 0.130 },
+  night:     { type: 'shift', z: 150, x: -3.0, tanTop: 1.05, tanBot: 0.135 },
+  base:      { type: 'shift', z: 66,  x:  5.0, tanTop: 0.62, tanBot: 0.16 },
+  atrium:    { type: 'look', z: 4, pos: [1.2, 1.7, 3.5], target: [0, 140, -2.0], up: [0, 0, -1], fov: 78 },
+  aerial:    { type: 'look', z: 320, pos: [28, 175, 320], target: [0, 108, 0], fov: 39 },
+  elevation: { type: 'ortho', z: 900, pos: [0, 76, 900], target: [0, 76, 0], up: [0, 1, 0], halfH: 82 },
+  plan:      { type: 'ortho', z: 900, pos: [0, 900, 0.001], target: [0, 0, 0], up: [0, 0, -1], halfH: 78 },
 };
 const v = views[VIEW] || views.street;
 
 // ---------- street furniture: trees, lamps, cars ----------
-{
+if (!ELEV) {
   const barkMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.95 });
   function tree(x, z, s = 1) {
     const t = new THREE.Mesh(new THREE.CylinderGeometry(0.18 * s, 0.28 * s, 4.5 * s, 8), barkMat); t.position.set(x, 2.25 * s, z); t.castShadow = true; scene.add(t);
@@ -427,6 +471,7 @@ const v = views[VIEW] || views.street;
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 9, 8), poleMat); pole.position.set(sx * 13.2, 4.5, z); scene.add(pole);
     const arm = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, 0.12), poleMat); arm.position.set(sx * 12.1, 9, z); scene.add(arm);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), lampMat); lamp.position.set(sx * 11.0, 8.9, z); scene.add(lamp);
+    if (NIGHT && z > v.z - 170 && z < v.z + 30) { const L = new THREE.PointLight(0xffc98a, 700, 45, 1.8); L.position.set(sx * 11.0, 8.5, z); scene.add(L); }
   }
   function car(x, z, towardCamera, color) {
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = towardCamera ? 0 : Math.PI;
@@ -444,6 +489,7 @@ const v = views[VIEW] || views.street;
 
 // ---------- pedestrians ----------
 {
+  const STREET_PEOPLE = !ELEV;
   const coats = [0x1d1f24, 0x2b2f3a, 0x3a2e28, 0x46484c, 0x1f2b3a, 0x5b4e42, 0x2f2f2f, 0x3b2a30, 0x6c6a66].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
   const skin = new THREE.MeshStandardMaterial({ color: 0xc9a68a, roughness: 0.8 });
   const umb = [0x111111, 0x222a44, 0x8a1c1c, 0x1b4d3e, 0x333333].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, side: THREE.DoubleSide }));
@@ -458,27 +504,55 @@ const v = views[VIEW] || views.street;
     scene.add(g);
   }
   // foreground figures on the wet street, walking toward the hotel
-  person(-4.2, v.z - 16, Math.PI + 0.2, true, 0); person(-3.0, v.z - 14.5, Math.PI - 0.1, false, 4); person(6.4, v.z - 22, Math.PI + 0.4, true, 1); person(9.4, v.z - 29, Math.PI - 0.5, true, 6); person(-9.8, v.z - 34, Math.PI, false, 3);
+  if (STREET_PEOPLE) person(-4.2, v.z - 16, Math.PI + 0.2, true, 0); person(-3.0, v.z - 14.5, Math.PI - 0.1, false, 4); person(6.4, v.z - 22, Math.PI + 0.4, true, 1); person(9.4, v.z - 29, Math.PI - 0.5, true, 6); person(-9.8, v.z - 34, Math.PI, false, 3);
   // sidewalks
-  for (let i = 0; i < 26; i++) { const sx = rnd() < 0.5 ? -1 : 1; person(sx * rr(13.5, 18.5), rr(62, 330), rr(0, 6.3), rnd() < 0.5); }
+  if (STREET_PEOPLE) for (let i = 0; i < 26; i++) { const sx = rnd() < 0.5 ? -1 : 1; person(sx * rr(13.5, 18.5), rr(62, 330), rr(0, 6.3), rnd() < 0.5); }
   // crosswalk & plaza & entrance walkway
-  for (let i = 0; i < 6; i++) person(rr(-10, 10), rr(59, 63), rr(0, 6.3), rnd() < 0.5);
+  if (STREET_PEOPLE) for (let i = 0; i < 6; i++) person(rr(-10, 10), rr(59, 63), rr(0, 6.3), rnd() < 0.5);
   for (let i = 0; i < 14; i++) { const a = rr(0.25, 2.9); const r = rr(42, 55); person(Math.cos(a) * r, Math.sin(a) * r, rr(0, 6.3), rnd() < 0.4); }
   for (let i = 0; i < 8; i++) person(rr(-3.5, 3.5), rr(19, 40), rr(0, 6.3), rnd() < 0.3);
+  for (let i = 0; i < 16; i++) { const a = rr(0, 6.28), r = rr(8.5, 15.5); person(Math.cos(a) * r, Math.sin(a) * r, rr(0, 6.3), false); } // guests in the lobby
+  for (let i = 0; i < 10; i++) { const a = rr(0, 6.28), r = rr(9, 15.8); person(Math.cos(a) * r, Math.sin(a) * r, rr(0, 6.3), false); scene.children[scene.children.length - 1].position.y = 7.5; } // mezzanine
 }
 
+if (ELEV) { const cut = new THREE.Mesh(new THREE.BoxGeometry(600, 4, 2), new THREE.MeshBasicMaterial({ color: 0x3b3833 })); cut.position.set(0, -2, 70); scene.add(cut); }
+
 // ---------- camera: eye level, shifted lens (verticals stay vertical) ----------
-const fovFull = 2 * Math.atan(v.tanTop) / DEG;
-const frac = (v.tanTop + v.tanBot) / (2 * v.tanTop);
-const Hf = Math.round(H / frac);
-const camera = new THREE.PerspectiveCamera(fovFull, W / Hf, 0.5, 12000);
-camera.setViewOffset(W, Hf, 0, 0, W, H);
-camera.position.set(v.x, 1.65, v.z);
-camera.lookAt(v.x, 1.65, 0);
+let camera;
+if (v.type === 'shift') {
+  const fovFull = 2 * Math.atan(v.tanTop) / DEG;
+  const frac = (v.tanTop + v.tanBot) / (2 * v.tanTop);
+  const Hf = Math.round(H / frac);
+  camera = new THREE.PerspectiveCamera(fovFull, W / Hf, 0.5, 12000);
+  camera.setViewOffset(W, Hf, 0, 0, W, H);
+  camera.position.set(v.x, 1.65, v.z);
+  camera.lookAt(v.x, 1.65, 0);
+} else if (v.type === 'look') {
+  camera = new THREE.PerspectiveCamera(v.fov, W / H, 0.3, 12000);
+  camera.position.set(...v.pos); if (v.up) camera.up.set(...v.up); camera.lookAt(...v.target);
+} else {
+  const halfW = v.halfH * W / H;
+  camera = new THREE.OrthographicCamera(-halfW, halfW, v.halfH, -v.halfH, 1, 9000);
+  camera.position.set(...v.pos); camera.up.set(...v.up); camera.lookAt(...v.target);
+}
 camera.updateProjectionMatrix();
 
-// ---------- render ----------
-renderer.compile(scene, camera);
-renderer.render(scene, camera);
+// ---------- render: ambient occlusion for depth, bloom for night lights ----------
+class GlassAwareGTAO extends GTAOPass { // keep glass, water tint and the sky out of the AO depth/normal buffers
+  overrideVisibility() { super.overrideVisibility(); this.scene.traverse(o => { if (o.userData.noAO || (o.material && o.material.transparent) || o.isReflector) o.visible = false; }); }
+}
+const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 4 });
+const composer = new EffectComposer(renderer, rt);
+composer.setPixelRatio(1); composer.setSize(W, H);
+composer.addPass(new RenderPass(scene, camera));
+if (AO) {
+  const ao = new GlassAwareGTAO(scene, camera, W, H);
+  ao.updateGtaoMaterial({ radius: v.type === 'ortho' ? 2.5 : (VIEW === 'aerial' ? 6 : 1.8), distanceExponent: 1.5, thickness: 1.5, scale: 1.0, samples: 16 });
+  ao.blendIntensity = NIGHT ? 0.6 : 0.85;
+  composer.addPass(ao);
+}
+if (NIGHT) composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.55, 0.45, 0.82));
+composer.addPass(new OutputPass());
+composer.render();
 window.__done = true;
 console.log('rendered', W, 'x', H, 'view', VIEW, 'triangles', renderer.info.render.triangles);

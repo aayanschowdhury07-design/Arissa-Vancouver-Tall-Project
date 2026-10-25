@@ -1,9 +1,10 @@
 // Headless renderer: serves this folder, opens scene in Chromium (SwiftShader WebGL), saves PNG.
-// usage: node render.js --view street --w 2600 --h 3250 --out ../renders/hollow-tree-hotel.png
+// usage: node render.js --view street --w 2600 --h 3250 --out ../renders/hollow-tree-hotel.png [--time night] [--ao 0]
 const { chromium } = require('playwright');
 const http = require('http'); const fs = require('fs'); const path = require('path');
 const args = Object.fromEntries(process.argv.slice(2).join(' ').split('--').filter(Boolean).map(s => { const [k, ...v] = s.trim().split(' '); return [k, v.join(' ') || 'true']; }));
 const W = +(args.w || 2600), H = +(args.h || 3250), VIEW = args.view || 'street', SEED = args.seed || '7';
+const EXTRA = (args.time ? `&time=${args.time}` : '') + (args.ao ? `&ao=${args.ao}` : '');
 const OUT = path.resolve(args.out || `../renders/hollow-tree-hotel-${VIEW}.png`);
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' };
 const server = http.createServer((req, res) => {
@@ -18,7 +19,7 @@ const server = http.createServer((req, res) => {
   page.on('console', m => console.log('[page]', m.text()));
   page.on('pageerror', e => console.log('[pageerror]', e.message));
   const t0 = Date.now();
-  await page.goto(`http://127.0.0.1:${port}/index.html?w=${W}&h=${H}&view=${VIEW}&seed=${SEED}`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?w=${W}&h=${H}&view=${VIEW}&seed=${SEED}${EXTRA}`);
   await page.waitForFunction(() => window.__done === true, null, { timeout: 1200000 });
   const data = await page.evaluate(() => document.querySelector('canvas').toDataURL('image/png'));
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
